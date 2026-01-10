@@ -14,6 +14,7 @@ ARCHITECTURE:
 """
 
 import os
+from dotenv import load_dotenv
 import sys
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
@@ -25,6 +26,8 @@ import redis
 from urllib.parse import urlparse
 import hashlib
 import logging
+
+load_dotenv('.env.local')  # Load environment variables
 
 # Configure logging to see what's happening
 logging.basicConfig(

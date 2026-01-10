@@ -137,7 +137,7 @@ jobs:
       - name: Run batch processor
         env:
           # Environment variables - these get passed to your script
-          # ${{ secrets.MONGO_URI }} retrieves a secret you set in GitHub
+          # ${{ secrets.MONGODB_URI }} retrieves a secret you set in GitHub
           #
           # HOW TO SET SECRETS:
           # 1. Go to your repo on GitHub
@@ -148,7 +148,7 @@ jobs:
           # 6. Click "Add secret"
           #
           # Secrets are encrypted and never shown in logs (you'll see ***)
-          MONGO_URI: ${{ secrets.MONGO_URI }}
+          MONGODB_URI: ${{ secrets.MONGODB_URI }} 
           REDIS_URL: ${{ secrets.REDIS_URL }}
           
           # You can also use non-secret variables from GitHub
@@ -194,14 +194,23 @@ jobs:
       # ----------------------------------------------------------------------
       # Only runs if previous steps failed
       # You can integrate with Slack, Discord, email, etc.
-      - name: Notify on failure
+      - name: Send email notification on failure
         if: failure()
-        run: |
-          echo "Batch processing failed!"
-          echo "Check logs at: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          
-          # In production, you might send an email or Slack message:
-          # curl -X POST ${{ secrets.SLACK_WEBHOOK }} -d '{"text":"Pipeline failed!"}'
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 587
+          username: ${{ secrets.EMAIL_USERNAME }}
+          password: ${{ secrets.EMAIL_PASSWORD }}
+          subject: Analytics Pipeline Failed - ${{ github.workflow }}
+          to: abigilspencer.dev@gmail.com
+          from: GitHub Actions
+          body: |
+            Workflow ${{ github.workflow }} failed!
+            
+            Repository: ${{ github.repository }}
+            Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            Commit: ${{ github.sha }}
 
 # ============================================================================
 # ADDITIONAL CONFIGURATIONS
