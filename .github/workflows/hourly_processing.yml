@@ -148,7 +148,7 @@ jobs:
           # 6. Click "Add secret"
           #
           # Secrets are encrypted and never shown in logs (you'll see ***)
-          MONGODB_URI: ${{ secrets.MONGODB_URI }} 
+          MONGODB_URI: ${{ secrets.MONGODB_URI }}
           REDIS_URL: ${{ secrets.REDIS_URL }}
           
           # You can also use non-secret variables from GitHub

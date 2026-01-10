@@ -1,0 +1,121 @@
+# ============================================================================
+# Python Dependencies for Portfolio Analytics Pipeline
+# ============================================================================
+#
+# HOW TO USE THIS FILE:
+#   pip install -r requirements.txt
+#
+# WHY PIN VERSIONS?
+#   - Ensures consistent behavior across environments
+#   - Prevents breaking changes from automatic updates
+#   - Makes debugging easier (everyone has same versions)
+#
+# HOW TO UPDATE:
+#   1. Test new version locally first
+#   2. Update version number here
+#   3. Test in GitHub Actions
+#   4. Document any breaking changes
+#
+# ============================================================================
+
+# --- DATA PROCESSING ---
+
+# pandas: DataFrame manipulation and data analysis
+# Why we need it: Clean data, feature engineering, aggregations
+pandas>=2.1.0,<3.0.0
+
+# numpy: Numerical computing (pandas dependency)
+# Why we need it: Array operations, mathematical functions
+numpy>=1.24.0,<2.0.0
+
+# pyarrow: Fast columnar data format (Parquet files)
+# Why we need it: Efficient storage and fast I/O for cleaned data
+pyarrow>=14.0.0,<15.0.0
+
+# --- DATABASES ---
+
+# pymongo: MongoDB driver for Python
+# Why we need it: Connect to MongoDB Atlas, query event data
+pymongo>=4.6.0,<5.0.0
+
+# redis: Redis driver for Python
+# Why we need it: Cache aggregated metrics for fast dashboard queries
+redis>=5.0.0,<6.0.0
+
+# --- WEB SCRAPING / USER AGENT PARSING (Optional) ---
+
+# user-agents: Parse user agent strings (browser/device detection)
+# Why we need it: Extract device type and browser from user agent
+# NOTE: batch_processor.py has simplified version if you skip this
+user-agents>=2.2.0,<3.0.0
+
+# --- UTILITIES ---
+
+# python-dotenv: Load environment variables from .env file
+# Why we need it: Local development with .env instead of exporting vars
+# NOTE: Not needed in GitHub Actions (uses secrets)
+python-dotenv>=1.0.0,<2.0.0
+
+# --- DASHBOARD (if building Plotly Dash) ---
+
+# Uncomment these if you're building the dashboard:
+
+# dash: Framework for building analytical web apps
+# dash>=2.14.0,<3.0.0
+
+# dash-bootstrap-components: Bootstrap components for Dash
+# dash-bootstrap-components>=1.5.0,<2.0.0
+
+# plotly: Interactive visualization library
+# plotly>=5.18.0,<6.0.0
+
+# gunicorn: Production WSGI server for deploying Dash
+# gunicorn>=21.2.0,<22.0.0
+
+# --- TESTING (Optional but recommended) ---
+
+# pytest: Testing framework
+# pytest>=7.4.0,<8.0.0
+
+# pytest-cov: Code coverage reports
+# pytest-cov>=4.1.0,<5.0.0
+
+# --- AWS INTEGRATION (Optional - for Lambda deployment) ---
+
+# boto3: AWS SDK for Python
+# boto3>=1.34.0,<2.0.0
+
+# ============================================================================
+# DEVELOPMENT vs PRODUCTION
+# ============================================================================
+#
+# For production, you might want separate files:
+#
+# requirements-base.txt (core dependencies)
+# requirements-dev.txt (testing, linting)
+# requirements-prod.txt (gunicorn, AWS tools)
+#
+# Then:
+#   pip install -r requirements-base.txt
+#   pip install -r requirements-dev.txt  # only on your laptop
+#
+# ============================================================================
+
+# ============================================================================
+# TROUBLESHOOTING
+# ============================================================================
+#
+# "ERROR: No matching distribution found for X"
+#   → Check Python version (need 3.9+)
+#   → Try: pip install --upgrade pip
+#
+# "ERROR: Could not build wheels for Y"
+#   → Missing system dependencies
+#   → Ubuntu: sudo apt-get install python3-dev build-essential
+#   → Mac: xcode-select --install
+#
+# "ImportError: No module named X"
+#   → Virtual environment not activated
+#   → Or didn't install requirements
+#
+# ============================================================================
