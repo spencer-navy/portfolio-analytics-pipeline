@@ -134,35 +134,33 @@ jobs:
       # STEP 4: Run the batch processing script
       # ----------------------------------------------------------------------
       # This is the actual work - running your Python script
+# ----------------------------------------------------------------------
+      # STEP 4: Run the batch processing script
+      # ----------------------------------------------------------------------
       - name: Run batch processor
         env:
-          # Environment variables - these get passed to your script
-          # ${{ secrets.MONGODB_URI }} retrieves a secret you set in GitHub
-          #
-          # HOW TO SET SECRETS:
-          # 1. Go to your repo on GitHub
-          # 2. Settings → Secrets and variables → Actions
-          # 3. Click "New repository secret"
-          # 4. Name: MONGO_URI
-          # 5. Value: mongodb+srv://user:pass@cluster.mongodb.net/portfolio
-          # 6. Click "Add secret"
-          #
-          # Secrets are encrypted and never shown in logs (you'll see ***)
           MONGODB_URI: ${{ secrets.MONGODB_URI }}
           REDIS_URL: ${{ secrets.REDIS_URL }}
-          
-          # You can also use non-secret variables from GitHub
-          # For example, hours_to_process from manual trigger input
           HOURS_TO_PROCESS: ${{ github.event.inputs.hours_to_process || '1' }}
         
         run: |
-          # Run the batch processor
-          # -u flag = unbuffered output (see logs in real-time)
-          python -u src/batch_processor.py
+          echo "=== Environment Variable Debug ==="
+          echo "Secret exists in GitHub: ${{ secrets.MONGODB_URI != '' }}"
           
-          # Exit code determines success/failure
-          # 0 = success, any other number = failure
-          # If script raises an exception, this step fails automatically
+          # Check if variable is available in shell
+          if [ -z "$MONGODB_URI" ]; then
+            echo "ERROR: MONGODB_URI is EMPTY in shell!"
+            exit 1
+          else
+            echo "SUCCESS: MONGODB_URI is set (length: ${#MONGODB_URI} characters)"
+          fi
+          
+          # Print first 20 chars to verify format (won't show password)
+          echo "MONGODB_URI starts with: ${MONGODB_URI:0:20}..."
+          echo "===================================="
+          
+          echo "Running batch processor..."
+          python -u src/batch_processor.py
       
       # ----------------------------------------------------------------------
       # STEP 5: Upload artifacts (optional)
