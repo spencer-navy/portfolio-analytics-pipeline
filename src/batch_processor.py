@@ -27,12 +27,8 @@ from urllib.parse import urlparse
 import hashlib
 import logging
 
-# Load environment variables from .env.local file
+# Load environment variables from .env.local file (if it exists - for local development)
 load_dotenv('.env.local')
-
-MONGODB_URI = os.getenv('MONGODB_URI')
-if not MONGODB_URI:
-    raise ValueError("MONGODB_URI environment variable not set")
 
 # Configure logging to see what's happening
 logging.basicConfig(
@@ -130,11 +126,11 @@ class BatchProcessor:
             self.mongo_client.admin.command('ping')
             
             # Get database and collection references
-            # 'portfolio' is the database name, 'events' is the collection
-            self.db = self.mongo_client['portfolio']
+            # 'analytics' is the database name, 'events' is the collection
+            self.db = self.mongo_client['analytics']
             self.events_collection = self.db['events']
             
-            logger.info(f"✓ Connected to MongoDB (Database: portfolio)")
+            logger.info(f"✓ Connected to MongoDB (Database: analytics)")
             
         except (ConnectionFailure, ServerSelectionTimeoutError) as e:
             logger.error(f"✗ Failed to connect to MongoDB: {e}")
@@ -818,6 +814,12 @@ def main():
     logger.info("=" * 60)
     logger.info("STARTING BATCH EVENT PROCESSING JOB")
     logger.info("=" * 60)
+    
+    # Check for required environment variables
+    MONGODB_URI = os.getenv('MONGODB_URI')
+    if not MONGODB_URI:
+        logger.error("MONGODB_URI environment variable not set")
+        raise ValueError("MONGODB_URI environment variable not set")
     
     processor = None
     
