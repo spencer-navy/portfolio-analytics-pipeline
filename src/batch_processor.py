@@ -27,7 +27,12 @@ from urllib.parse import urlparse
 import hashlib
 import logging
 
-load_dotenv('.env.local')  # Load environment variables
+# Load environment variables from .env.local file
+load_dotenv('.env.local')
+
+MONGODB_URI = os.getenv('MONGODB_URI')
+if not MONGODB_URI:
+    raise ValueError("MONGODB_URI environment variable not set")
 
 # Configure logging to see what's happening
 logging.basicConfig(
@@ -65,7 +70,7 @@ class BatchProcessor:
             redis_url (str): Redis connection string. If None, reads from environment
             
         Environment Variables Expected:
-            MONGO_URI: MongoDB Atlas connection string (e.g., mongodb+srv://user:pass@cluster.mongodb.net/db)
+            MONGODB_URI: MongoDB Atlas connection string (e.g., mongodb+srv://user:pass@cluster.mongodb.net/db)
             REDIS_URL: Redis connection string (e.g., redis://localhost:6379)
         
         Example:
@@ -80,13 +85,13 @@ class BatchProcessor:
         """
         # Get connection strings from parameters or environment variables
         # The 'or' operator returns the first truthy value
-        self.mongo_uri = mongo_uri or os.getenv('MONGO_URI')
-        self.redis_url = redis_url or os.getenv('REDIS_URL', 'redis://localhost:6379')
+        self.mongo_uri = mongo_uri or os.getenv('MONGODB_URI')
+        self.redis_url = redis_url or os.getenv('REDIS_URL')  # None if not set
         
         # Validate that we have required connection strings
         if not self.mongo_uri:
             raise ValueError(
-                "MongoDB URI is required. Set MONGO_URI environment variable or pass mongo_uri parameter."
+                "MongoDB URI is required. Set MONGODB_URI environment variable or pass mongo_uri parameter."
             )
         
         # Initialize database connections
@@ -135,23 +140,28 @@ class BatchProcessor:
             logger.error(f"✗ Failed to connect to MongoDB: {e}")
             raise
         
-        try:
-            # Connect to Redis
-            # decode_responses=True means Redis returns strings instead of bytes
-            logger.info("Connecting to Redis...")
-            self.redis_client = redis.from_url(
-                self.redis_url,
-                decode_responses=True,
-                socket_connect_timeout=5  # 5 second timeout
-            )
-            
-            # Test the connection
-            self.redis_client.ping()
-            logger.info("✓ Connected to Redis")
-            
-        except redis.ConnectionError as e:
-            logger.error(f"✗ Failed to connect to Redis: {e}")
-            logger.warning("Continuing without Redis - caching will be disabled")
+        # Only try to connect to Redis if URL is provided
+        if self.redis_url:
+            try:
+                # Connect to Redis
+                # decode_responses=True means Redis returns strings instead of bytes
+                logger.info("Connecting to Redis...")
+                self.redis_client = redis.from_url(
+                    self.redis_url,
+                    decode_responses=True,
+                    socket_connect_timeout=5  # 5 second timeout
+                )
+                
+                # Test the connection
+                self.redis_client.ping()
+                logger.info("✓ Connected to Redis")
+                
+            except redis.ConnectionError as e:
+                logger.error(f"✗ Failed to connect to Redis: {e}")
+                logger.warning("Continuing without Redis - caching will be disabled")
+                self.redis_client = None
+        else:
+            logger.info("Redis URL not provided - caching will be disabled")
             self.redis_client = None
     
     def load_events(
@@ -790,9 +800,6 @@ class BatchProcessor:
 # This code runs when the script is executed directly (not imported)
 
 def main():
-
-    """Enhanced main with ML model training"""
-
     """
     Main entry point for the batch processing job.
     
@@ -801,65 +808,89 @@ def main():
     2. Loads events from the last hour
     3. Cleans and transforms the data
     4. Engineers features
-    5. Updates Redis cache
-    6. Optionally saves cleaned data to file
-    7. Closes connections
+    5. Updates Redis cache (if available)
+    6. Optionally trains ML models (daily at midnight UTC)
+    7. Optionally saves cleaned data to file
+    8. Closes connections
     
     This is what gets called by GitHub Actions / AWS Lambda / Airflow
     """
-
     logger.info("=" * 60)
-    logger.info("STARTING BATCH EVENT PROCESSING JOB WITH ML TRAINING")
+    logger.info("STARTING BATCH EVENT PROCESSING JOB")
     logger.info("=" * 60)
     
+    processor = None
+    
     try:
+        # Initialize processor
         processor = BatchProcessor()
         
-        # Load and process events (existing code)
+        # Define time range for this batch
+        # Process events from the last hour
         end_time = datetime.utcnow()
         start_time = end_time - timedelta(hours=1)
         
+        logger.info(f"Processing events from {start_time} to {end_time}")
+        
+        # Load events from MongoDB
         df = processor.load_events(start_date=start_time, end_date=end_time)
         
         if df.empty:
-            logger.warning("No events to process.")
+            logger.warning("No events to process in this time range.")
             return
         
+        # Clean the data
         cleaned = processor.clean_dataframe(df)
+        
+        # Engineer features
         featured = processor.add_features(cleaned)
+        
+        # Update Redis cache (only if Redis is available)
         processor.update_redis_cache(featured)
         
-        # NEW: ML Model Training (every 24 hours)
-        current_hour = datetime.utcnow().hour
-        if current_hour == 0:  # Midnight UTC
-            logger.info("\n" + "=" * 60)
-            logger.info("STARTING DAILY ML MODEL TRAINING")
-            logger.info("=" * 60)
-            
-            # Load full dataset (last 30 days)
-            training_start = datetime.utcnow() - timedelta(days=30)
-            full_df = processor.load_events(start_date=training_start)
-            
-            if len(full_df) > 100:  # Need minimum data
-                full_cleaned = processor.clean_dataframe(full_df)
-                full_featured = processor.add_features(full_cleaned)
-                
-                # Train user segmentation
-                kmeans, scaler, cluster_names = train_user_segmentation_model(full_featured)
-                logger.info("✓ User segmentation model trained")
-                
-                # Train recommendation engine
-                similarity_matrix = train_recommendation_model(full_featured)
-                logger.info("✓ Recommendation model trained")
-                
-                # Save models to S3 or Redis
-                upload_models_to_storage(kmeans, scaler, similarity_matrix)
-                
-                logger.info("=" * 60)
-                logger.info("ML MODEL TRAINING COMPLETE")
-                logger.info("=" * 60)
-            else:
-                logger.warning("Insufficient data for ML training (need >100 events)")
+        # ========== ML MODEL TRAINING (COMMENTED OUT FOR NOW) ==========
+        # TODO: Implement these functions when ready to add ML capabilities
+        # Uncomment this section once you've implemented the ML training functions
+        
+        # # Train ML models daily at midnight UTC
+        # current_hour = datetime.utcnow().hour
+        # if current_hour == 0:  # Midnight UTC
+        #     logger.info("\n" + "=" * 60)
+        #     logger.info("STARTING DAILY ML MODEL TRAINING")
+        #     logger.info("=" * 60)
+        #     
+        #     # Load full dataset (last 30 days) for training
+        #     training_start = datetime.utcnow() - timedelta(days=30)
+        #     full_df = processor.load_events(start_date=training_start)
+        #     
+        #     if len(full_df) > 100:  # Need minimum data
+        #         full_cleaned = processor.clean_dataframe(full_df)
+        #         full_featured = processor.add_features(full_cleaned)
+        #         
+        #         # Train user segmentation model (K-means clustering)
+        #         # kmeans, scaler, cluster_names = train_user_segmentation_model(full_featured)
+        #         # logger.info("✓ User segmentation model trained")
+        #         
+        #         # Train recommendation engine (collaborative filtering)
+        #         # similarity_matrix = train_recommendation_model(full_featured)
+        #         # logger.info("✓ Recommendation model trained")
+        #         
+        #         # Save models to S3 or Redis for dashboard to use
+        #         # upload_models_to_storage(kmeans, scaler, similarity_matrix)
+        #         
+        #         logger.info("=" * 60)
+        #         logger.info("ML MODEL TRAINING COMPLETE")
+        #         logger.info("=" * 60)
+        #     else:
+        #         logger.warning("Insufficient data for ML training (need >100 events)")
+        
+        # ================================================================
+        
+        # Optional: Save cleaned data to file for analysis
+        # Uncomment if you want to save processed data
+        # output_file = f"/tmp/cleaned_events_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.parquet"
+        # featured.to_parquet(output_file)
+        # logger.info(f"Saved cleaned data to {output_file}")
         
         # Print summary
         logger.info("\n" + "=" * 60)
@@ -868,14 +899,18 @@ def main():
         logger.info(f"Events processed: {len(featured)}")
         logger.info(f"Unique sessions: {featured['sessionId'].nunique()}")
         logger.info(f"Event types: {featured['eventType'].value_counts().to_dict()}")
+        logger.info(f"Time range: {start_time} to {end_time}")
         logger.info("=" * 60)
         
     except Exception as e:
         logger.error(f"✗ Batch processing failed: {e}")
-        raise
+        import traceback
+        logger.error(traceback.format_exc())
+        sys.exit(1)  # Exit with error code for GitHub Actions
     
     finally:
-        processor.close()
+        if processor:
+            processor.close()
         logger.info("Batch processing job completed")
 
 

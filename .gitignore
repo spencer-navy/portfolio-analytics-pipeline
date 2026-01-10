@@ -36,3 +36,5 @@ Thumbs.db
 
 # Docker
 .docker/
+.env.local
+venv/
