@@ -1,0 +1,259 @@
+# ============================================================================
+# GitHub Actions Workflow: Hourly Event Processing Pipeline
+# ============================================================================
+#
+# PURPOSE:
+#   Automatically runs batch_processor.py every hour to clean MongoDB events
+#   and update Redis cache for the analytics dashboard.
+#
+# WHAT IS GITHUB ACTIONS?
+#   GitHub Actions is a CI/CD (Continuous Integration/Continuous Deployment)
+#   platform that runs code automatically based on triggers like:
+#   - Code push/pull request
+#   - Schedule (cron)
+#   - Manual button click
+#   - External webhooks
+#
+# HOW IT WORKS:
+#   1. GitHub's servers spin up a fresh Ubuntu virtual machine
+#   2. Install Python and dependencies
+#   3. Run your script
+#   4. Shut down the VM
+#   5. All for free (2,000 minutes/month on free tier)
+#
+# FILE LOCATION:
+#   This file MUST be in: .github/workflows/hourly_processing.yml
+#   (GitHub looks for workflows in this exact path)
+#
+# ============================================================================
+
+# Name of this workflow (appears in GitHub Actions tab)
+name: Hourly Event Processing
+
+# ============================================================================
+# TRIGGERS: When should this workflow run?
+# ============================================================================
+on:
+  # 1. SCHEDULED RUNS (Cron syntax)
+  schedule:
+    # Cron format: minute hour day month day-of-week
+    # '0 * * * *' = at minute 0 of every hour (1:00, 2:00, 3:00, etc.)
+    # 
+    # More examples:
+    # '*/5 * * * *'   = every 5 minutes
+    # '0 */2 * * *'   = every 2 hours
+    # '0 9 * * 1'     = 9 AM every Monday
+    # '0 0 * * *'     = midnight daily
+    #
+    # NOTE: GitHub Actions cron runs on UTC time
+    # 0:00 UTC = 7:00 PM EST (previous day)
+    - cron: '0 * * * *'  # Every hour on the hour
+  
+  # 2. MANUAL TRIGGER (adds "Run workflow" button in GitHub UI)
+  # Useful for:
+  # - Testing the workflow without waiting for schedule
+  # - Reprocessing data after fixing a bug
+  # - Running ad-hoc analyses
+  workflow_dispatch:
+    # Optional: Add inputs that appear in the manual run UI
+    inputs:
+      hours_to_process:
+        description: 'Number of hours to process (default: 1)'
+        required: false
+        default: '1'
+        type: string
+      skip_redis:
+        description: 'Skip Redis cache update?'
+        required: false
+        default: false
+        type: boolean
+
+# ============================================================================
+# JOBS: What tasks should run?
+# ============================================================================
+# A workflow can have multiple jobs that run in parallel or sequentially.
+# Each job runs on a fresh virtual machine.
+
+jobs:
+  # Job name (can be anything, shows up in GitHub UI)
+  process-events:
+    
+    # What operating system to use
+    # Options: ubuntu-latest, windows-latest, macos-latest
+    # ubuntu-latest is fastest and cheapest for most Python scripts
+    runs-on: ubuntu-latest
+    
+    # ========================================================================
+    # STEPS: Sequential tasks within this job
+    # ========================================================================
+    # Steps run in order. If any step fails, subsequent steps don't run.
+    
+    steps:
+      # ----------------------------------------------------------------------
+      # STEP 1: Get the code
+      # ----------------------------------------------------------------------
+      # 'uses' means "use an existing action from GitHub Marketplace"
+      # actions/checkout@v4 is GitHub's official action to clone your repo
+      #
+      # Without this step, the VM would be empty - no code to run!
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        # This clones your repo into /home/runner/work/<repo-name>
+      
+      # ----------------------------------------------------------------------
+      # STEP 2: Install Python
+      # ----------------------------------------------------------------------
+      # actions/setup-python@v4 installs Python on the VM
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          # 'cache: pip' caches installed packages to speed up future runs
+          # First run: ~60 seconds to install packages
+          # Subsequent runs: ~10 seconds (packages cached)
+          cache: 'pip'
+      
+      # ----------------------------------------------------------------------
+      # STEP 3: Install Python dependencies
+      # ----------------------------------------------------------------------
+      # 'run' means "execute this shell command"
+      # This is like typing the command in your terminal
+      - name: Install dependencies
+        run: |
+          # Upgrade pip to latest version
+          python -m pip install --upgrade pip
+          
+          # Install packages from requirements.txt
+          # --no-cache-dir saves space (GitHub has storage limits)
+          pip install --no-cache-dir -r requirements.txt
+          
+          # List installed packages (for debugging)
+          pip list
+      
+      # ----------------------------------------------------------------------
+      # STEP 4: Run the batch processing script
+      # ----------------------------------------------------------------------
+      # This is the actual work - running your Python script
+      - name: Run batch processor
+        env:
+          # Environment variables - these get passed to your script
+          # ${{ secrets.MONGO_URI }} retrieves a secret you set in GitHub
+          #
+          # HOW TO SET SECRETS:
+          # 1. Go to your repo on GitHub
+          # 2. Settings → Secrets and variables → Actions
+          # 3. Click "New repository secret"
+          # 4. Name: MONGO_URI
+          # 5. Value: mongodb+srv://user:pass@cluster.mongodb.net/portfolio
+          # 6. Click "Add secret"
+          #
+          # Secrets are encrypted and never shown in logs (you'll see ***)
+          MONGO_URI: ${{ secrets.MONGO_URI }}
+          REDIS_URL: ${{ secrets.REDIS_URL }}
+          
+          # You can also use non-secret variables from GitHub
+          # For example, hours_to_process from manual trigger input
+          HOURS_TO_PROCESS: ${{ github.event.inputs.hours_to_process || '1' }}
+        
+        run: |
+          # Run the batch processor
+          # -u flag = unbuffered output (see logs in real-time)
+          python -u src/batch_processor.py
+          
+          # Exit code determines success/failure
+          # 0 = success, any other number = failure
+          # If script raises an exception, this step fails automatically
+      
+      # ----------------------------------------------------------------------
+      # STEP 5: Upload artifacts (optional)
+      # ----------------------------------------------------------------------
+      # 'Artifacts' are files you want to save from the run
+      # Examples: logs, processed data files, reports
+      #
+      # These files are stored for 90 days and downloadable from GitHub UI
+      - name: Upload processing logs
+        # 'if: always()' means run even if previous steps failed
+        # Useful for debugging - you want logs even when things break
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          # Name that appears in GitHub UI
+          name: processing-logs-${{ github.run_number }}
+          
+          # What files to upload (glob pattern)
+          # This captures any .log files and the output parquet file
+          path: |
+            /tmp/cleaned_events_*.parquet
+            *.log
+          
+          # How long to keep (1-90 days)
+          retention-days: 7
+      
+      # ----------------------------------------------------------------------
+      # STEP 6: Send notification on failure (optional)
+      # ----------------------------------------------------------------------
+      # Only runs if previous steps failed
+      # You can integrate with Slack, Discord, email, etc.
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "Batch processing failed!"
+          echo "Check logs at: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          
+          # In production, you might send an email or Slack message:
+          # curl -X POST ${{ secrets.SLACK_WEBHOOK }} -d '{"text":"Pipeline failed!"}'
+
+# ============================================================================
+# ADDITIONAL CONFIGURATIONS
+# ============================================================================
+
+# Concurrency: Prevent multiple runs at the same time
+# If a new run starts while previous is still running, cancel the old one
+concurrency:
+  group: batch-processing
+  cancel-in-progress: true
+
+# ============================================================================
+# HOW TO USE THIS WORKFLOW
+# ============================================================================
+#
+# SETUP (one-time):
+# 1. Create this file in your repo: .github/workflows/hourly_processing.yml
+# 2. Add secrets to GitHub:
+#    - Go to repo Settings → Secrets → New repository secret
+#    - Add MONGO_URI with your MongoDB connection string
+#    - Add REDIS_URL with your Redis connection string
+# 3. Create requirements.txt with dependencies:
+#    pandas
+#    pymongo
+#    redis
+#    pyarrow  # for parquet support
+# 4. Commit and push to GitHub
+#
+# MONITORING:
+# - View runs: GitHub repo → Actions tab
+# - See logs: Click on a run → Click on job name → Expand steps
+# - Download artifacts: Run page → Artifacts section
+#
+# TESTING:
+# - Use "workflow_dispatch" to run manually without waiting for schedule
+# - Check "Re-run jobs" to retry failed runs
+#
+# DEBUGGING:
+# - Add 'set -x' to bash commands to see each command as it runs
+# - Add print statements to Python script
+# - Upload log files as artifacts
+# - Check secret names match exactly (case-sensitive!)
+#
+# COST:
+# - Free tier: 2,000 minutes/month
+# - This job: ~2-3 minutes per run
+# - Running hourly: ~1,500 minutes/month (within free tier!)
+#
+# ADVANCED:
+# - Run tests before processing (add pytest step)
+# - Deploy to production after successful processing
+# - Cache data between runs for incremental processing
+# - Use matrix strategy to process multiple time ranges in parallel
+#
+# ============================================================================

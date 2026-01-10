@@ -1,0 +1,235 @@
+# ============================================================================
+# Docker Ignore File
+# ============================================================================
+#
+# PURPOSE:
+#   Tells Docker which files to EXCLUDE when building images
+#   Similar to .gitignore but for Docker
+#
+# WHY IS THIS IMPORTANT?
+#   ✓ Faster builds (less data to copy)
+#   ✓ Smaller images (less junk in final container)
+#   ✓ Security (don't include secrets/credentials)
+#
+# HOW IT WORKS:
+#   When you run COPY . . in Dockerfile, Docker ignores files listed here
+#
+# ============================================================================
+
+# ----------------------------------------------------------------------------
+# Python Artifacts
+# ----------------------------------------------------------------------------
+
+# Compiled Python files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# ----------------------------------------------------------------------------
+# Virtual Environments
+# ----------------------------------------------------------------------------
+
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+.venv/
+
+# ----------------------------------------------------------------------------
+# Environment Variables & Secrets
+# ----------------------------------------------------------------------------
+
+# CRITICAL: Never include secrets in Docker images!
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+credentials.json
+
+# ----------------------------------------------------------------------------
+# IDEs and Editors
+# ----------------------------------------------------------------------------
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# PyCharm
+.idea/
+*.iml
+*.iws
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+*.ipynb
+
+# Vim
+*.swp
+*.swo
+*~
+
+# Emacs
+*~
+\#*\#
+.\#*
+
+# ----------------------------------------------------------------------------
+# Operating System Files
+# ----------------------------------------------------------------------------
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+
+# ----------------------------------------------------------------------------
+# Git
+# ----------------------------------------------------------------------------
+
+.git/
+.gitignore
+.gitattributes
+.github/
+
+# We don't need Git history in Docker images!
+
+# ----------------------------------------------------------------------------
+# Documentation (already in image from COPY)
+# ----------------------------------------------------------------------------
+
+# Don't need these docs duplicated in container
+README.md
+DOCKER_TUTORIAL.md
+LICENSE
+*.md
+
+# ----------------------------------------------------------------------------
+# Development Files
+# ----------------------------------------------------------------------------
+
+# Log files
+*.log
+logs/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Data files (if large)
+data/
+*.csv
+*.parquet
+*.json
+# NOTE: Comment out if you need these files in the container
+
+# ----------------------------------------------------------------------------
+# Docker Files
+# ----------------------------------------------------------------------------
+
+# Don't copy Docker files into the image (meta!)
+Dockerfile*
+docker-compose.yml
+.dockerignore
+
+# ----------------------------------------------------------------------------
+# CI/CD
+# ----------------------------------------------------------------------------
+
+.github/
+.gitlab-ci.yml
+.travis.yml
+Jenkinsfile
+
+# ----------------------------------------------------------------------------
+# Node.js (if you have any)
+# ----------------------------------------------------------------------------
+
+node_modules/
+npm-debug.log
+yarn-error.log
+package-lock.json
+yarn.lock
+
+# ============================================================================
+# IMPORTANT NOTES
+# ============================================================================
+#
+# 1. BE CAREFUL WITH WILDCARDS
+#    *.txt excludes ALL .txt files, including requirements.txt!
+#    Use specific patterns instead
+#
+# 2. NEGATION
+#    To exclude everything except specific files:
+#    *
+#    !requirements.txt
+#    !batch_processor.py
+#
+# 3. VERIFY WHAT'S COPIED
+#    Build image and check:
+#    docker build -t test .
+#    docker run -it test ls -la
+#
+# 4. SECURITY FIRST
+#    When in doubt, exclude it!
+#    Especially: .env files, credentials, SSH keys
+#
+# ============================================================================
