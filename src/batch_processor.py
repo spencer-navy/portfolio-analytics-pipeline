@@ -16,7 +16,8 @@ ARCHITECTURE:
 import os
 from dotenv import load_dotenv
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from typing import Dict, List, Optional
 import pandas as pd
 import numpy as np
@@ -185,12 +186,14 @@ class BatchProcessor:
         
         Example:
             # Load last hour of events
-            start = datetime.utcnow() - timedelta(hours=1)
-            end = datetime.utcnow()
+            from zoneinfo import ZoneInfo
+            est = ZoneInfo('America/New_York')
+            start = datetime.now(est) - timedelta(hours=1)
+            end = datetime.now(est)
             df = processor.load_events(start_date=start, end_date=end)
             
             # Load only filter clicks from last 24 hours
-            start = datetime.utcnow() - timedelta(days=1)
+            start = datetime.now(est) - timedelta(days=1)
             df = processor.load_events(start_date=start, event_types=['filter_click'])
         """
         logger.info("Loading events from MongoDB...")
@@ -668,9 +671,10 @@ class BatchProcessor:
             
             # === METRIC 8: Set Last Updated Timestamp ===
             # Useful for showing "data as of..." in dashboard
+            est = ZoneInfo('America/New_York')
             self.redis_client.set(
                 'last_cache_update',
-                datetime.utcnow().isoformat()
+                datetime.now(est).isoformat()
             )
             
             logger.info("✓ Redis cache updated successfully")
@@ -828,11 +832,12 @@ def main():
         processor = BatchProcessor()
         
         # Define time range for this batch
-        # Process events from the last hour
-        end_time = datetime.utcnow()
+        # Process events from the last hour in EST timezone
+        est = ZoneInfo('America/New_York')
+        end_time = datetime.now(est)
         start_time = end_time - timedelta(hours=1)
         
-        logger.info(f"Processing events from {start_time} to {end_time}")
+        logger.info(f"Processing events from {start_time} to {end_time} (EST)")
         
         # Load events from MongoDB
         df = processor.load_events(start_date=start_time, end_date=end_time)
@@ -855,14 +860,15 @@ def main():
         # Uncomment this section once you've implemented the ML training functions
         
         # # Train ML models daily at midnight UTC
-        # current_hour = datetime.utcnow().hour
-        # if current_hour == 0:  # Midnight UTC
+        # est = ZoneInfo('America/New_York')
+        # current_hour = datetime.now(est).hour
+        # if current_hour == 0:  # Midnight EST
         #     logger.info("\n" + "=" * 60)
         #     logger.info("STARTING DAILY ML MODEL TRAINING")
         #     logger.info("=" * 60)
         #     
         #     # Load full dataset (last 30 days) for training
-        #     training_start = datetime.utcnow() - timedelta(days=30)
+        #     training_start = datetime.now(est) - timedelta(days=30)
         #     full_df = processor.load_events(start_date=training_start)
         #     
         #     if len(full_df) > 100:  # Need minimum data
@@ -890,7 +896,8 @@ def main():
         
         # Optional: Save cleaned data to file for analysis
         # Uncomment if you want to save processed data
-        # output_file = f"/tmp/cleaned_events_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.parquet"
+        # est = ZoneInfo('America/New_York')
+        # output_file = f"/tmp/cleaned_events_{datetime.now(est).strftime('%Y%m%d_%H%M%S')}.parquet"
         # featured.to_parquet(output_file)
         # logger.info(f"Saved cleaned data to {output_file}")
         
