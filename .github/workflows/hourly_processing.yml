@@ -134,33 +134,35 @@ jobs:
       # STEP 4: Run the batch processing script
       # ----------------------------------------------------------------------
       # This is the actual work - running your Python script
-# ----------------------------------------------------------------------
-      # STEP 4: Run the batch processing script
-      # ----------------------------------------------------------------------
       - name: Run batch processor
         env:
+          # Environment variables - these get passed to your script
+          # ${{ secrets.MONGODB_URI }} retrieves a secret you set in GitHub
+          #
+          # HOW TO SET SECRETS:
+          # 1. Go to your repo on GitHub
+          # 2. Settings → Secrets and variables → Actions
+          # 3. Click "New repository secret"
+          # 4. Name: MONGO_URI
+          # 5. Value: mongodb+srv://user:pass@cluster.mongodb.net/portfolio
+          # 6. Click "Add secret"
+          #
+          # Secrets are encrypted and never shown in logs (you'll see ***)
           MONGODB_URI: ${{ secrets.MONGODB_URI }}
           REDIS_URL: ${{ secrets.REDIS_URL }}
+          
+          # You can also use non-secret variables from GitHub
+          # For example, hours_to_process from manual trigger input
           HOURS_TO_PROCESS: ${{ github.event.inputs.hours_to_process || '1' }}
         
         run: |
-          echo "=== Environment Variable Debug ==="
-          echo "Secret exists in GitHub: ${{ secrets.MONGODB_URI != '' }}"
-          
-          # Check if variable is available in shell
-          if [ -z "$MONGODB_URI" ]; then
-            echo "ERROR: MONGODB_URI is EMPTY in shell!"
-            exit 1
-          else
-            echo "SUCCESS: MONGODB_URI is set (length: ${#MONGODB_URI} characters)"
-          fi
-          
-          # Print first 20 chars to verify format (won't show password)
-          echo "MONGODB_URI starts with: ${MONGODB_URI:0:20}..."
-          echo "===================================="
-          
-          echo "Running batch processor..."
+          # Run the batch processor
+          # -u flag = unbuffered output (see logs in real-time)
           python -u src/batch_processor.py
+          
+          # Exit code determines success/failure
+          # 0 = success, any other number = failure
+          # If script raises an exception, this step fails automatically
       
       # ----------------------------------------------------------------------
       # STEP 5: Upload artifacts (optional)
@@ -187,28 +189,6 @@ jobs:
           # How long to keep (1-90 days)
           retention-days: 7
       
-      # ----------------------------------------------------------------------
-      # STEP 6: Send notification on failure (optional)
-      # ----------------------------------------------------------------------
-      # Only runs if previous steps failed
-      # You can integrate with Slack, Discord, email, etc.
-      - name: Send email notification on failure
-        if: failure()
-        uses: dawidd6/action-send-mail@v3
-        with:
-          server_address: smtp.gmail.com
-          server_port: 587
-          username: ${{ secrets.EMAIL_USERNAME }}
-          password: ${{ secrets.EMAIL_PASSWORD }}
-          subject: Analytics Pipeline Failed - ${{ github.workflow }}
-          to: abigilspencer.dev@gmail.com
-          from: GitHub Actions
-          body: |
-            Workflow ${{ github.workflow }} failed!
-            
-            Repository: ${{ github.repository }}
-            Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-            Commit: ${{ github.sha }}
 
 # ============================================================================
 # ADDITIONAL CONFIGURATIONS
