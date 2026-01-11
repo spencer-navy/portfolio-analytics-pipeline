@@ -27,6 +27,7 @@ import redis
 from urllib.parse import urlparse
 import hashlib
 import logging
+import json
 
 # Load environment variables from .env.local file (if it exists - for local development)
 load_dotenv('.env.local')
@@ -294,6 +295,33 @@ class BatchProcessor:
         # Page should never be null, but if it is, drop those rows
         if 'page' in cleaned.columns:
             before_count = len(cleaned)
+            null_page_events = cleaned[cleaned['page'].isna()].copy()
+            
+            if len(null_page_events) > 0:
+                logger.warning(f"  Found {len(null_page_events)} events with null page values:")
+                for idx, row in null_page_events.head(5).iterrows():
+                    logger.warning(f"    - Event {row.get('_id')}: {row.get('eventType')} at {row.get('timestamp')}")
+                if len(null_page_events) > 5:
+                    logger.warning(f"    ... and {len(null_page_events) - 5} more")
+                
+                # Save removed events to MongoDB 'removed_events' collection
+                removed_collection = self.events_collection.database['removed_events']
+                null_page_copy = null_page_events.copy()
+                null_page_copy['removal_reason'] = 'null_page_value'
+                null_page_copy['removed_at'] = datetime.now(ZoneInfo('America/New_York'))
+                
+                # Convert to JSON and back to handle pandas types and nested objects properly
+                json_str = null_page_copy.to_json(orient='records', date_format='iso')
+                null_page_records = json.loads(json_str)
+                
+                # Re-add the removal metadata (lost in JSON conversion)
+                for record in null_page_records:
+                    record['removal_reason'] = 'null_page_value'
+                    record['removed_at'] = datetime.now(ZoneInfo('America/New_York'))
+                
+                removed_collection.insert_many(null_page_records)
+                logger.info(f"  Saved {len(null_page_events)} null-page events to 'removed_events' collection")
+            
             cleaned = cleaned.dropna(subset=['page'])
             dropped = before_count - len(cleaned)
             if dropped > 0:
@@ -301,23 +329,65 @@ class BatchProcessor:
         
         # === STEP 2: Remove Duplicates ===
         logger.info("  Step 2: Removing duplicates")
-        
+
         # Sort by timestamp to keep the first occurrence
         cleaned = cleaned.sort_values('timestamp')
-        
+
+        # Add rounded timestamp for duplicate detection
+        cleaned['timestamp_rounded'] = cleaned['timestamp'].dt.floor('1S')
+
         # Define what makes an event "duplicate"
-        # Same session, same event type, same page within 1 second = likely duplicate
-        duplicate_subset = ['sessionId', 'eventType', 'page']
-        
+        # Same session, same event type, same page, same second = likely duplicate
+        duplicate_subset = ['sessionId', 'eventType', 'page', 'timestamp_rounded']
+
         before_count = len(cleaned)
-        cleaned = cleaned.drop_duplicates(
-            subset=duplicate_subset,
-            keep='first'  # Keep the first occurrence
-        )
+
+        # Identify duplicates before removing them
+        duplicate_mask = cleaned.duplicated(subset=duplicate_subset, keep='first')
+        duplicate_events = cleaned[duplicate_mask].copy()
+
+        if len(duplicate_events) > 0:
+            logger.warning(f"  Found {len(duplicate_events)} duplicate events:")
+            
+            # Show breakdown by event type
+            dup_by_type = duplicate_events['eventType'].value_counts()
+            for event_type, count in dup_by_type.items():
+                logger.warning(f"    - {event_type}: {count} duplicates")
+            
+            # Save duplicate events to MongoDB 'removed_events' collection
+            removed_collection = self.events_collection.database['removed_events']
+            duplicate_events_copy = duplicate_events.drop('timestamp_rounded', axis=1).copy()
+            duplicate_events_copy['removal_reason'] = 'duplicate_event'
+            duplicate_events_copy['removed_at'] = datetime.now(ZoneInfo('America/New_York'))
+            
+            # Convert to JSON and back to handle pandas types
+            json_str = duplicate_events_copy.to_json(orient='records', date_format='iso')
+            duplicate_records = json.loads(json_str)
+            
+            # Re-add metadata
+            for record in duplicate_records:
+                record['removal_reason'] = 'duplicate_event'
+                record['removed_at'] = datetime.now(ZoneInfo('America/New_York'))
+            
+            if duplicate_records:
+                try:
+                    removed_collection.insert_many(duplicate_records, ordered=False)
+                    logger.info(f"  Saved {len(duplicate_events)} duplicate events to 'removed_events' collection")
+                except Exception as e:
+                    # Some might already exist, that's okay
+                    logger.info(f"  Attempted to save duplicates (some may already exist)")
+
+        # Remove duplicates
+        cleaned = cleaned.drop_duplicates(subset=duplicate_subset, keep='first')
+
+        # Drop the helper column
+        cleaned = cleaned.drop('timestamp_rounded', axis=1)
+
         duplicates_removed = before_count - len(cleaned)
-        
+
         if duplicates_removed > 0:
             logger.info(f"  Removed {duplicates_removed} duplicate events")
+
         
         # === STEP 3: Extract Time-Based Features ===
         logger.info("  Step 3: Creating time-based features")
@@ -832,15 +902,16 @@ def main():
         processor = BatchProcessor()
         
         # Define time range for this batch
-        # Process events from the last hour in EST timezone
-        est = ZoneInfo('America/New_York')
-        end_time = datetime.now(est)
-        start_time = end_time - timedelta(hours=1)
+        # TEMPORARILY: Process ALL historical data (remove time filters)
+        # TODO: Change back to last hour after initial run
+        # est = ZoneInfo('America/New_York')
+        # end_time = datetime.now(est)
+        # start_time = end_time - timedelta(hours=1)
         
-        logger.info(f"Processing events from {start_time} to {end_time} (EST)")
+        logger.info("Processing ALL historical events from MongoDB")
         
-        # Load events from MongoDB
-        df = processor.load_events(start_date=start_time, end_date=end_time)
+        # Load ALL events (no time filter)
+        df = processor.load_events()
         
         if df.empty:
             logger.warning("No events to process in this time range.")
@@ -908,7 +979,6 @@ def main():
         logger.info(f"Events processed: {len(featured)}")
         logger.info(f"Unique sessions: {featured['sessionId'].nunique()}")
         logger.info(f"Event types: {featured['eventType'].value_counts().to_dict()}")
-        logger.info(f"Time range: {start_time} to {end_time}")
         logger.info("=" * 60)
         
     except Exception as e:

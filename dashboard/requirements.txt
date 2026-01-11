@@ -1,0 +1,6 @@
+# Dashboard Dependencies
+dash>=2.14.0
+plotly>=5.18.0
+pandas>=2.1.0
+redis>=5.0.0
+python-dotenv>=1.0.0
