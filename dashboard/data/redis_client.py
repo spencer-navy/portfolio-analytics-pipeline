@@ -10,8 +10,9 @@ from dotenv import load_dotenv
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 import json
+from sympy import limit
 
-load_dotenv('.env.local')
+load_dotenv('../.env.local')  # Load environment variables from .env file
 
 class RedisDataFetcher:
     """
@@ -80,6 +81,21 @@ class RedisDataFetcher:
         
         # Return in chronological order
         return sorted(result, key=lambda x: x['datetime'])
+    
+    def get_popular_filters(self, limit: int = 10) -> List[Tuple[str, int]]:
+        """Get top N popular filters with usage counts."""
+        filters = self.client.zrevrange('popular_filters', 0, limit - 1, withscores=True)
+        return [(filter_name, int(score)) for filter_name, score in filters] if filters else []
+
+    def get_popular_projects(self, limit: int = 10) -> List[Tuple[str, int]]:
+        """Get top N popular projects with view counts."""
+        projects = self.client.zrevrange('popular_projects', 0, limit - 1, withscores=True)
+        return [(project, int(score)) for project, score in projects] if projects else []
+
+    def get_last_update(self) -> Optional[str]:
+        """Get timestamp of last data update."""
+        last_update = self.client.get('last_update')
+        return last_update if last_update else None
     
     def get_all_dashboard_data(self) -> Dict:
         """

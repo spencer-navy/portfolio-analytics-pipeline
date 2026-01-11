@@ -61,13 +61,13 @@ python-dotenv>=1.0.0,<2.0.0
 # Uncomment these if you're building the dashboard:
 
 # dash: Framework for building analytical web apps
-# dash>=2.14.0,<3.0.0
+dash>=2.14.0,<3.0.0
 
 # dash-bootstrap-components: Bootstrap components for Dash
 # dash-bootstrap-components>=1.5.0,<2.0.0
 
 # plotly: Interactive visualization library
-# plotly>=5.18.0,<6.0.0
+plotly>=5.18.0,<6.0.0
 
 # gunicorn: Production WSGI server for deploying Dash
 # gunicorn>=21.2.0,<22.0.0
